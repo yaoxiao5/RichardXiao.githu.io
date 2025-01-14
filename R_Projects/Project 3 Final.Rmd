@@ -1,0 +1,421 @@
+---
+title: "Project 3"
+author: "Richard Xiao & Xi Yang"
+date: "2022-11-12"
+output: 
+  github_document:
+  toc: true
+params:
+      channel: "lifestyle"
+---
+## Introduction section
+This is an online news popularity data set, and dataset summarizes a heterogeneous set of features about articles published by Mashable in a period of two years. The goal is to predict the number of shares in social networks (popularity). We're thinking about what kind of articles are we most likely to share, and we believe there are two aspects. One is objectivity. Users can feel the content is useful and valuable. The other one is subjectivity. Users agree with the attitudes expressed in the article, and also, the emotion expressed in the article resonated with users. 
+
+Based on the two aspects, we choose 21 variables, and they are n_tokens_title, n_tokens_content, n_unique_tokens, num_imgs, num_videos, kw_avg_min, kw_max_max, kw_avg_max, kw_avg_avg, weekday_is_monday, weekday_is_tuesday, weekday_is_wednesday, weekday_is_thursday, weekday_is_friday,. weekday_is_saturday, weekday_is_sunday, global_subjectivity, global_sentiment_polarity, global_rate_positive_words, global_rate_negative_words, and share.
+
+We produce some basic analysis before we fitting the model. The purpose is to inspect the trends between different variables with respect to the number of share, and also, figure out the correlation between a few notable numeric variables. It helps the reader understand the summary or graph.
+
+For a linear regression model, we'll use forward stepwise and LASSO regression model. For an ensemble tree-based model, we'll fit random forest and boosted tree model.
+
+
+## Data
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+library(caret)
+#read in data
+df1 <- read_csv("OnlineNewsPopularity.csv")
+df1
+#Remove the first two variables we don't need. Also want to rename the day variables to make it easier for analysis with rename variable.
+
+
+df <- df1 %>%
+  select(-c(url, timedelta)) %>%
+  mutate(log_shares = log(shares)) %>%
+  select(-shares) %>% rename(monday = weekday_is_monday , tuesday = weekday_is_tuesday, wednesday = weekday_is_wednesday, thursday = weekday_is_thursday, friday =     weekday_is_friday, saturday = weekday_is_saturday, sunday = weekday_is_sunday)
+df 
+#setting up data channel 
+selectchannel<- paste0("data_channel_is_", params[[1]])
+df<- df %>% filter(get(selectchannel) ==1 ) 
+df
+set.seed(100)
+index <- createDataPartition(df$log_shares, p = .7, list = FALSE)
+train <- df[index,]
+test <- df[-index,]
+train
+test
+```
+
+
+
+
+
+## Summarizations
+
+### 1. Plotting the correlation between a few notable numeric variables. 
+
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+library(corrplot)
+cor_mat <- cor(train %>% select(log_shares,num_imgs,num_videos,n_tokens_content,n_tokens_title,kw_avg_min,kw_max_max,kw_avg_max,kw_avg_avg,global_subjectivity,global_sentiment_polarity,global_rate_positive_words), method = "pearson")
+corrplot(cor_mat, hc.order = TRUE,
+type = "lower",
+tl.pos = "lt",
+title = "Correlation Coefficients for log of shares",
+subtitle = "Correlation Coefficients for log of shares",
+mar=c(0,0,2,0)
+)
+```
+
+From the correlation graph, if the variable has a darker blue color, it will signify a strong positive correlation with the other variable whereas if it has a darker red color, it will have a stronger negative correlation with the other variable.
+
+
+
+```{r echo=TRUE,eval=TRUE}
+#This new dataframe converts the days into categorical values for graphing.
+moddf <- train%>%
+  mutate(day = if_else(monday == 1,"Monday",if_else(tuesday == 1,"Tuesday",if_else(wednesday == 1,"Wednesday",if_else(
+thursday == 1,"Thursday",if_else(friday == 1,"Friday",if_else(saturday == 1,"Saturday", "Sunday")))))))
+#Eliminates any categorical variables for use of principal component analysis
+continuous <- train %>%select(-c(monday, tuesday, wednesday, thursday,friday, saturday, sunday, is_weekend, ))
+```
+
+### 2. Boxplot for log shares subdivided by days.
+```{r echo=TRUE,eval=TRUE}
+#Boxplot for log shares subdivided by days.
+ggplot(moddf, aes(x = day, y = log_shares, col = day)) + 
+  geom_boxplot(fill="grey") + 
+  geom_jitter() + 
+  ylab("log(shares)") + 
+  xlab("") +
+  theme(axis.text.x = element_text(angle = 45)) +
+  ggtitle("Boxplot for Log Shares by Day")
+```
+
+### 3. Scatterplot for log shares and number of images
+```{r echo=TRUE,eval=TRUE}
+#Scatterplot for log shares and number of images
+ggplot(moddf, aes(y = log_shares, x = num_imgs, color = day)) + 
+  geom_point(stat = "identity", position = "jitter") + 
+  geom_smooth( method = "lm")  + 
+  xlab("num_hrefs") + 
+  ylab("log_shares")
+```
+
+### 4. Scatterplot for log shares and number of videos.
+```{r echo=TRUE,eval=TRUE}
+#Scatterplot for log shares and number of videos.
+ggplot(moddf, aes(y = log_shares, x = num_videos, color = day)) + 
+  geom_point(stat = "identity", position = "jitter") + 
+  geom_smooth( method = "lm")  + 
+  xlab("num_hrefs") + 
+  ylab("log_shares")
+```
+
+### 5. Histogram for log shares
+```{r echo=TRUE,eval=TRUE}
+#Histogram for log shares 
+ggplot(moddf, aes(x=log_shares, fill = kw_avg_avg, color = day)) + geom_histogram(binwidth = 1, position="dodge") + xlab("Average KeyWord") + ylab("Log Shares")
+```
+
+### 6. Scatterplot for number of unique tokens and log shares
+```{r echo=TRUE,eval=TRUE}
+#Scatterplot for number of unique tokens and log shares
+ggplot(moddf, aes(y = log_shares, x = n_unique_tokens, color = day)) + 
+  geom_point(stat = "identity", position = "jitter") + 
+  geom_smooth( method = "lm")  + 
+  xlab("n_unique_tokens") + 
+  ylab("log_shares")
+```
+
+### 7. Scatterplot for number of tokens content and log shares
+```{r echo=TRUE,eval=TRUE}
+#Scatterplot for number of tokens content and log shares
+ggplot(moddf, aes(y = log_shares, x = n_tokens_content, color = day)) + 
+  geom_point(stat = "identity", position = "jitter") + 
+  geom_smooth( method = "lm")  + 
+  xlab("n_tokens_content") + 
+  ylab("log_shares")
+```
+
+### 8. Scatterplot for number of token titles and log shares
+```{r echo=TRUE,eval=TRUE}
+#Scatterplot for number of token titles and log shares
+ggplot(moddf, aes(y = log_shares, x = n_tokens_title, color = day)) + 
+  geom_point(stat = "identity", position = "jitter") + 
+  geom_smooth( method = "lm")  + 
+  xlab("n_tokens_title") + 
+  ylab("log_shares")
+```
+
+### 9. General summary statistics for continuous dataframe
+
+The code chunk below will give summary statistics for the twelve variables that we want to analyze. The results are ordered by descending standard deviation. We want to know the general statistics for all of these variables to see how they compare against each other.
+```{r pressure, echo=FALSE}
+library(psych)
+#summary statistics for this continuous dataframe. Describe function is used to get statistics like sd, mean and other stats.
+summarystats <-describe(continuous)
+arrange_summarystats <- summarystats %>%arrange(desc(sd))
+arrange_summarystats
+```
+
+### 10. Numerical summary of categorical variable is_weekend
+
+let’s pull a summary of the number of shares. One of the factors that most affects the number of shares is whether the day is weekday or weekend. I wanted to look at the average, standard deviation, median and IQR values of number of shares on weekdays and weekend. If the value of average is larger , then articles tend to be shared more often.
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+train %>%
+  group_by(is_weekend) %>%
+  summarise(average=mean(log_shares), median=median(log_shares), sd=sd(log_shares), IQR=IQR(log_shares))
+```
+### 11. Dependence of number of shares on text subjectivity
+
+A scatter plot with the number of shares on the y-axis and the text subjectivity on the x-axis is created: we can inspect the trend of shares as a function of the text subjectivity. We know that if the value of text subjectivity is 0, it stands for the article is very objective, and value 1 stands for very subjective. If the most points distributed lower than 0.5, then articles with more objectivity tend to be shared more often. If the most points distributed larger than 0.5, then articles with more subjectivity tend to be shared more often. If the most points distributed around 0.5, then articles with more neutrality tend to be shared more often.
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+library(ggplot2)
+subjectivityData <- train %>% group_by(global_subjectivity) %>% summarize(sharecount = mean(log_shares))
+ggplot(subjectivityData, aes(x = global_subjectivity, y = sharecount, color =global_subjectivity)) +
+geom_point() +
+ggtitle("dependence of number of shares on text subjectivity ")
+```
+
+### 12. Dependence of number of shares on text sentiment polarity
+
+A scatter plot with the number of shares on the y-axis and the text sentiment polarity on the x-axis is created: we can inspect the trend of shares as a function of the text sentiment polarity. We know that if the value of text sentiment polarity is greater than -1 and less than 0, it stands for the article sentiment is negative emotion. If the value of text sentiment polarity is greater than 0 and less than 1, it stands for the article sentiment is positive emotion. If the most points distributed around (-1,0), then articles with negative emotion tend to be shared more often. If the most points distributed around (0,1), then articles with positive emotion tend to be shared more often. If the most points distributed around 0, then articles with neutral emotion tend to be shared more often.
+
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+library(ggplot2)
+sentimentpolarityData <- train %>% group_by(global_sentiment_polarity) %>% summarize(sharecount = mean(log_shares))
+ggplot(sentimentpolarityData, aes(x = global_sentiment_polarity, y = sharecount, color =global_sentiment_polarity)) +
+geom_point() +
+ggtitle("dependence of number of shares on text sentiment polarity ")
+```
+
+### 13. Dependence of number of shares on positive word rate
+
+A scatter plot with the number of shares on the y-axis and the positive word rate on the x-axis is created: we can inspect the trend of shares as a function of the positive word rate. If the points show an upward trend, then articles with more positive words tend to be shared more often. If we see a negative trend then articles with more positive words tend to be shared less often.
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+library(ggplot2)
+positivewordsData <- train %>% group_by(global_rate_positive_words) %>% summarize(sharecount = mean(log_shares))
+ggplot(positivewordsData, aes(x = global_rate_positive_words, y = sharecount), color=global_rate_positive_words) +
+geom_point() +
+geom_smooth(method = "lm") +
+ggtitle("dependence of number of shares on positive word rate ")
+```
+### 14. Dependence of number of shares on negative words rate
+
+A scatter plot with the number of shares on the y-axis and the negative words rate on the x-axis is created: we can inspect the trend of shares as a function of the negative words rate. If the points show an upward trend, then articles with more negative words tend to be shared more often. If we see a negative trend then articles with more negative words tend to be shared less often.
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+library(ggplot2)
+negativewordsData <- train %>% group_by(global_rate_negative_words) %>% summarize(sharecount = mean(log_shares))
+ggplot(negativewordsData, aes(x = global_rate_negative_words, y = sharecount)) +
+geom_point() +
+geom_smooth(method = "lm") +
+ggtitle("dependence of number of shares on negative words rate")
+```
+
+## Modeling
+
+For models below, I have selected the log_shares as the dependent variable, and num_imgs, num_videos, n_tokens_content, n_unique_tokens, n_tokens_title, kw_avg_min, kw_max_max, kw_avg_max, kw_avg_avg,global_subjectivity, global_sentiment_polarity, global_rate_positive_words, global_rate_negative_words, monday, tuesday, wednesday, thursday, friday, saturday, sunday as the independent variables.
+
+```{r echo=TRUE,eval=TRUE}
+library(tidyverse)
+#Select variables of interest for analysis.
+analysis <- train %>% select(log_shares,num_imgs,num_videos,n_tokens_content,n_unique_tokens,n_tokens_title,kw_avg_min,kw_max_max,kw_avg_max,kw_avg_avg,global_subjectivity,global_sentiment_polarity,global_rate_positive_words,global_rate_negative_words,monday,tuesday,wednesday,thursday,friday,saturday,sunday)
+analysis
+```
+Here after all the models formulated below, to compare them, I am predicting the test data on this model to derive some common metrics like RMSE and R squared values that can be used to compare multiple models. For prediction, I am using predict() function, and to extract prediction metrics, I am using postResample() function.
+
+### 1. LASSO Regression Model
+
+Lasso regression is a type of linear regression that uses shrinkage. Shrinkage is where data values are shrunk towards a central point, like the mean. The lasso procedure encourages simple, sparse models (i.e. models with fewer parameters). This particular type of regression is well-suited for models showing high levels of multicollinearity or when you want to automate certain parts of model selection, like variable selection/parameter elimination.
+
+```{r echo=TRUE,eval=TRUE}
+library(caret)
+fitLASSO <- train(log_shares ~ ., data = analysis,
+method = "lasso",
+preProcess = c("center", "scale"),
+trControl = trainControl(method = "cv", number = 10)
+)
+predLASSO <- predict(fitLASSO, newdata = test)
+m1<-postResample(predLASSO, obs = test$log_shares)
+m1
+```
+### 2. Boosted Tree Model
+
+Boosting is an ensemble learning method that combines a set of weak learners into a strong learner to minimize training errors. In boosting, a random sample of data is selected, fitted with a model and then trained sequentially—that is, each model tries to compensate for the weaknesses of its predecessor. With each iteration, the weak rules from each individual classifier are combined to form one, strong prediction rule. 
+
+```{r echo=TRUE,eval=TRUE}
+library(caret)
+boostedFit <- train(log_shares ~ ., data = analysis, method = "gbm",trControl = trainControl(method = "cv" , number = 10),
+                    preProcess = c("center", "scale"),
+                    tuneGrid = expand.grid(n.trees = c(25, 50, 100, 150, 200),
+                                           interaction.depth = 1:4,
+                                           shrinkage = 0.1,
+                                           n.minobsinnode = 10)
+                    )
+pred_boosted <- predict(boostedFit, newdata = test)
+m2<-postResample(pred_boosted, test$log_shares)
+m2
+```
+
+### 3. Forward Fitting Model
+
+Also known as forward selection, this is a type of stepwise regression which begins with an empty model and adds in variables one by one. For each forward step, you add in a variable that will give the best improvement to your model.
+```{r echo=TRUE,eval=TRUE}
+library(caret)
+fit_forward <- train(log_shares ~., data = analysis,  method = "leapForward", preProcess = c("center", "scale"),trControl = trainControl(method = "cv", number = 10))
+fit_forward_prediction <- predict(fit_forward, newdata = test)
+m3<-postResample(fit_forward_prediction, test$log_shares)
+m3
+```
+
+### 4. Random Forest Model
+
+Random forests is another ensemble method in which we create multiple trees from the bootstraps samples and average the results. However, we use a random subset of predictors for each bootstrap sample instead of the whole sample.
+```{r}
+fit_forest <- train(log_shares ~ ., data = analysis, method = "treebag",trControl = trainControl(method = "cv" , number = 10),preProcess = c("center", "scale"),mtry = c(1:21))
+pred_forest <- predict(fit_forest, newdata = test)
+m4<-postResample(pred_forest, test$log_shares)
+m4
+```
+
+
+## Comparison
+```{r echo=TRUE,eval=TRUE}
+LASSO<- tibble(model = c("LASSO"), RMSE = c(m1[[1]]), Rsquared = c(m1[[2]]))
+
+boostedTree<- tibble(model = c("boosted"), RMSE = c(m2[[1]]), Rsquared = c(m2[[2]]))
+
+farward<- tibble(model = c("farward"), RMSE = c(m3[[1]]), Rsquared = c(m3[[2]]))
+
+randomForest<- tibble(model = c("randomForest"), RMSE = c(m4[[1]]), Rsquared = c(m4[[2]]))
+
+comparison<- rbind(LASSO, boostedTree, farward, randomForest)
+comparison
+```
+Based off the output, we would select the best model that would have the least RMSE value and the largest R squared value.
+
+
+
+### Screeplot and Biplot
+
+For the screeplots, we are selecting the fewest number of PCAs that would give the most amount of variation in our data. In addition, we are seeing which PC is stronger on each predictor variable. In this case, we are using two.
+
+```{r}
+#For this portion, I split the principal component aspect into 3 chunks since including all of the variables in one graph would make it unreadable. 
+
+#First chunk of code for screeplot and biplot. 
+
+df_no_shares <- continuous %>%
+  select(num_imgs,num_videos,n_tokens_content,n_unique_tokens)
+#Creating PC's along with center and scaling variables
+PCs <- prcomp(df_no_shares, center = TRUE, scale = TRUE)
+#Creating screeplots
+par(mfrow = c(1,2))
+plot(PCs$sdev^2/sum(PCs$sdev^2), xlab = "Principal Component",
+ylab = "Proportion of Variance Explained", ylim = c(0, 1), type = 'b')
+plot(cumsum(PCs$sdev^2/sum(PCs$sdev^2)), xlab = "Principal Component",
+ylab = "Cum. Prop of Variance Explained", ylim = c(0, 1), type = 'b')
+#Selecting only the PC's up to a 80% variance explained threshold using caret
+PCs_eighty <- preProcess(df_no_shares, method = c("center","scale", "pca"), thresh = .8)
+#Creating a data frame with just my PC's, day variables, and log_shares to use later as a regression
+df_PC <- predict(PCs_eighty, newdata = df_no_shares)
+#Monday is excluded to avoid multicollinearity
+df_PC <- df_PC %>%
+  bind_cols(log_shares = continuous$log_shares,tuesday = train$tuesday, 
+            wednesday = train$wednesday, thursday = train$thursday, friday = train$friday,
+            saturday = train$saturday, sunday = train$sunday)
+screeplot(PCs, type = "lines")
+biplot(PCs)
+
+
+#Second chunk of code for screeplot and biplot
+
+df_no_shares <- continuous %>%
+  select(n_tokens_title,kw_avg_min,kw_max_max,kw_avg_max,kw_avg_avg)
+#Creating PC's along with center and scaling variables
+PCs <- prcomp(df_no_shares, center = TRUE, scale = TRUE)
+#Creating screeplots
+par(mfrow = c(1,2))
+plot(PCs$sdev^2/sum(PCs$sdev^2), xlab = "Principal Component",
+ylab = "Proportion of Variance Explained", ylim = c(0, 1), type = 'b')
+plot(cumsum(PCs$sdev^2/sum(PCs$sdev^2)), xlab = "Principal Component",
+ylab = "Cum. Prop of Variance Explained", ylim = c(0, 1), type = 'b')
+#Selecting only the PC's up to a 80% variance explained threshold using caret
+PCs_eighty <- preProcess(df_no_shares, method = c("center","scale", "pca"), thresh = .8)
+#Creating a data frame with just my PC's, day variables, and log_shares to use later as a regression
+df_PC <- predict(PCs_eighty, newdata = df_no_shares)
+#Monday is excluded to avoid multicollinearity
+df_PC <- df_PC %>%
+  bind_cols(log_shares = continuous$log_shares,tuesday = train$tuesday, 
+            wednesday = train$wednesday, thursday = train$thursday, friday = train$friday,
+            saturday = train$saturday, sunday = train$sunday)
+screeplot(PCs, type = "lines")
+biplot(PCs)
+
+
+#Third Chunk
+
+
+df_no_shares <- continuous %>%
+  select(global_subjectivity,global_sentiment_polarity,global_rate_positive_words,global_rate_negative_words)
+#Creating PC's along with center and scaling variables
+PCs <- prcomp(df_no_shares, center = TRUE, scale = TRUE)
+#Creating screeplots
+par(mfrow = c(1,2))
+plot(PCs$sdev^2/sum(PCs$sdev^2), xlab = "Principal Component",
+ylab = "Proportion of Variance Explained", ylim = c(0, 1), type = 'b')
+plot(cumsum(PCs$sdev^2/sum(PCs$sdev^2)), xlab = "Principal Component",
+ylab = "Cum. Prop of Variance Explained", ylim = c(0, 1), type = 'b')
+#Selecting only the PC's up to a 80% variance explained threshold using caret
+PCs_eighty <- preProcess(df_no_shares, method = c("center","scale", "pca"), thresh = .8)
+#Creating a data frame with just my PC's, day variables, and log_shares to use later as a regression
+df_PC <- predict(PCs_eighty, newdata = df_no_shares)
+#Monday is excluded to avoid multicollinearity
+df_PC <- df_PC %>%
+  bind_cols(log_shares = continuous$log_shares,tuesday = train$tuesday, 
+            wednesday = train$wednesday, thursday = train$thursday, friday = train$friday,
+            saturday = train$saturday, sunday = train$sunday)
+screeplot(PCs, type = "lines")
+biplot(PCs)
+
+```
+
+## Automation
+#install.packages("purrr")
+```{r, eval=FALSE}
+library(purrr)
+library(tidyverse)
+#get data channels
+channelIDs <- data.frame("lifestyle", "entertainment", "bus", "socmed", "tech", "world")
+channelIDs
+#create filenames
+output_file <- paste0(channelIDs, ".md")
+#create a list for each team with just the team name parameter
+params<- lapply(channelIDs, FUN = function(x){list(channel = x)})
+params
+#put into a data frame
+reports <- tibble(output_file, params)
+reports
+
+library(rmarkdown)
+#render code
+apply(reports, MARGIN = 1,
+FUN = function(x){
+render(input = "Project 3 Final.Rmd", output_file = x[[1]], params = x[[2]])
+})
+```
+
+
+
