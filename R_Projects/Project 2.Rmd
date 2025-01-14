@@ -1,0 +1,55 @@
+---
+title: "Untitled"
+author: "Richard Xiao"
+date: "2022-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(httr)
+library(jsonlite)
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+get_recipes <- function(cuisine, diet = "N/A", time, number = 10, API = "965047400ad841198f2fd834535db269"){
+  
+  if(diet == "N/A") {
+    url <- paste0("https://api.spoonacular.com/recipes/complexSearch?apiKey=", API, "&cuisine=", cuisine,"&maxReadyTime=", time, "&number=", number, "&sort=random&addRecipeNutrition=true")
+  } else{
+    url <- paste0("https://api.spoonacular.com/recipes/complexSearch?apiKey=", API, "&cuisine=", cuisine, "&diet=", diet,"&maxReadyTime=", time,"&number=", number, "&sort=random&addRecipeNutrition=true")
+  }
+  var_names <- c("pricePerServing", "id", "title", "readyInMinutes", "nutrition", "servings")
+  recipe_list <- fromJSON(url)
+  recipe_sample <- recipe_list$results %>% select(var_names)
+  return(recipe_sample)
+}
+Italian_no_diet <- get_recipes("Italian", time = 50)
+Italian_Vegan <- get_recipes("Italian", "Vegan", time = 50)
+Italian_no_diet
+Italian_Vegan
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+
+
+
+getmacros <- function(minCalories, API = "965047400ad841198f2fd834535db269"){
+  url <- paste0("https://api.spoonacular.com/recipes/findByNutrients?apiKey=", API, "&minCalories=", minCalories)
+  calories_list <- fromJSON(url)
+  
+}
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
