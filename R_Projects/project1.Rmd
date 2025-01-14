@@ -1,0 +1,269 @@
+---
+title: "Project1"
+author: "Richard Xiao"
+date: "2022-09-06"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    code_folding: hide
+urlcolor: blue
+
+
+---
+
+
+# Data Processing
+
+
+
+The first step is reading in the datafile sheet1's by using the read csv function on the url. The next step is manipulating sheet1 data to get the analysis we need, which is shown by the code below. I decided to declare a new data object and called it revisedsheet1v1.I used chaining to make the necessary changes to sheet1. The following list shows the changes I made to sheet: 
+  
+  1.The rename function is used to rename Area_name into area_name. 
+  
+  2.Select is used to pick my variables of interest. In this case, I selected area_name, STCOU and any variable that ends with D, which I managed to get by using the ends_with function. 
+  
+  3.I grouped the area names together to make it easier to track the data by using the group by function.
+  
+  4.Converted the data into long format where each row has only one enrollment value for a particular area name. Pivot_longer function is used to convert the data to long format. All the columns that ended with D will pivot to longer format with these columns being renamed to area. Finally, enrollment will be the new names for these columns that end with D.
+  
+  5.I created a new variable called Year which extracts the last two digits prior to the D in our area variable declared last step and paste either 19 or 20 in front of these two digits. This signifies if these measurements were taken in either the end of the 20th century or beginning of the 21st century. Conditional statements are used here in conjunction with the substr function to determine this. The first substr in my conditional statement analyzes the number at position 7. If this number starts with a one, this means that the measurement took place in the 20th century and 19 will be pasted in front of the last two digits prior to the D(which have positions 8 and 9). Otherwise, if the number is not one, 20 will be pasted instead.This value is then converted to a numeric value.
+  
+  6.The measurement variable is created and substr function is used again to grab the first three characters and following four digits to represent which measurement is grabbed.
+
+In this next process, I created two data sets, one which contains non-county data and the other has county level data. The county data is formatted in a way where the county name goes first and then the state. The grep function is used to subset the data to include any area name with the county information. The - sign in my stateobject takes out any data that does not have a county format, only including area name with just the state name.
+
+Next, I added in a class to both the county and state datasets, which will be used later. In addition, two new variables will be created, one in the state dataset and the other in the county dataset.
+
+*   For the county dataset, the state variable is created to pinpoint which state each county measurement corresponds to. The substr function will do this. I added -1 to make sure that I grab the two digit state abbreviation.
++   For the state dataset, the division variable is created to determine which division each state is classified in. To do this, I first initialized 9 dataobjects, each one corresponding to a division, and placed the states that correspond to each division. If a row corresponds to a non-state, it will return Error. In order to get the proper classifications, I utilized ifelse statements to categorize the states to their proper division.
+```{r setup, echo = TRUE, eval = TRUE, message= FALSE}
+library(readr)
+sheet1 <- read_csv("https://www4.stat.ncsu.edu/~online/datasets/EDU01a.csv")
+
+```
+
+
+
+```{r part1, echo = TRUE, eval = TRUE, message=FALSE}
+library(dplyr)
+library(Lahman)
+library(readr)
+library(tidyr)
+as_tibble(sheet1)
+revisedsheet1v1 <-sheet1%>%rename(area_name="Area_name")%>%select(area_name,ends_with("D"),STCOU)%>%group_by(area_name)%>%pivot_longer(cols=ends_with("D"),names_to= "area",values_to="enrollment")%>%mutate(Year=ifelse(as.numeric(substr(area,start=7,stop=7))<= 1,as.numeric(paste0("19",substr(area,start=8, stop =9))),as.numeric(paste0("20",substr(area,start = 8, stop = 9)))), Measurement = substr(area,start=1,stop=7))
+
+#Next step is creating data sets.
+countyobject<-revisedsheet1v1[grep(pattern = ", \\w\\w", revisedsheet1v1$area_name),]
+stateobject<-revisedsheet1v1[-grep(pattern = ", \\w\\w", revisedsheet1v1$area_name),]
+class(countyobject)<-c("county",class(countyobject))
+class(stateobject)<-c("state",class(stateobject))
+
+                          
+countyobject%>%mutate(state=substr(area_name,nchar(area_name)-1,nchar(area_name)))
+
+Division1 <- c("CONNECTICUT","MAINE","MASSACHUSETTS","NEW HAMPSHIRE","RHODE ISLAND","VERMONT")
+Division2 <- c("NEW JERSEY","NEW YORK", "PENNSYLVANIA")
+Division3 <- c("ILLINOIS","INDIANA","MICHIGAN","OHIO","WISCONSIN")
+Division4 <- c("IOWA","KANSAS","MINNESOTA","MISSOURI","NEBRASKA","NORTH DAKOTA","SOUTH DAKOTA")
+Division5 <- c("DELAWARE","FLORIDA","GEORGIA","MARYLAND","NORTH CAROLINA","SOUTH CAROLINA","VIRGINIA","WASHINGTON","D.C","WEST VIRGINIA")
+Division6 <- c("ALABAMA","KENTUCKY","MISSISSIPPI","TENNESSEE")
+Division7 <- c("ARKANSAS","LOUISIANA","OKLAHOMA","TEXAS")
+Division8 <- c("ARIZONA","COLORADO","IDAHO","MONTANA","NEVADA","NEW MEXICO","UTAH","WYOMING")
+Division9 <- c("ALASKA","CALIFORNIA","HAWAII","OREGON","WASHINGTON")
+stateobject%>%mutate(division = ifelse(area_name %in% Division1,"1",ifelse(area_name %in% Division2,"2",ifelse(area_name %in% Division3,"3",ifelse(area_name %in% Division4,"4",ifelse(area_name %in% Division5,"5",ifelse(area_name %in% Division6,"6",ifelse(area_name %in% Division7,"7",ifelse(area_name %in% Division8,"8",ifelse(area_name %in% Division9,"9","ERROR"))))))))))
+                                       
+                                       
+```
+
+
+# Requirements
+
+*   Next, another similar dataset will be processed but this time, functions are constructed that will perform the code above. These functions will then be called by one function that can run all the steps om the project. I constructed 6 functions, some of which perform two, or even three, steps at a time.The argument for each function will be the url of the dataset that needs to be run. I reused a lot of the code in the data processing section in my functions. The code pasted is determined by which project steps need to be run. Furthermore,functions from the previous steps are embedded in some of my functions. For example would be in funcstep3, funcstep12 is nested in there since funcstep3 will call it. funcstep12 and funcstep3 are then embedded in funcstep456 for funcstep456 to call them in. 
+
+
++   In funcstep456, the class objects are declared in the function, along with funcstep5 and funcstep6 which initializes the state and division variable mentioned in the previous step. County and state datasets are created in this function.
+
++   The final function, which is called my_wrapper, will call in everything.All the functions that were created will be in the wrapper function
+
+```{r functionprocess, echo = TRUE, eval = TRUE, message=FALSE}
+library(dplyr)
+library(Lahman)
+library(readr)
+library(tidyr)
+sheetname <- read_csv("https://www4.stat.ncsu.edu/~online/datasets/EDU01b.csv")
+
+func_step12 <-function(url){
+    sheetname <-read.csv(url)  
+    sheetname <- sheetname%>%rename(area_name="Area_name")%>%select(area_name,ends_with("D"),STCOU)%>%group_by(area_name)%>%pivot_longer(cols=ends_with("D"),names_to= "area",values_to="enrollment")
+      return(sheetname)
+  
+}
+
+
+func_step3 <- function(url){
+  sheetname<-func_step12(url)  
+  newsheetname<- sheetname%>%mutate(Year=ifelse(as.numeric(substr(area,start=7,stop=7))<= 1,as.numeric(paste0("19",substr(area,start=8, stop =9))),as.numeric(paste0("20",substr(area,start = 8, stop = 9)))), Measurement = substr(area,start=1,stop=7))
+  return(newsheetname)
+}
+
+
+
+
+func_step5 <- function(countyobject){
+  countyobject <-mutate(countyobject,state=substr(area_name,nchar(area_name)-1,nchar(area_name)))
+  return(countyobject)
+}
+
+
+func_step6 <- function(stateobject){
+Division1 <- c("CONNECTICUT","MAINE","MASSACHUSETTS","NEW HAMPSHIRE","RHODE ISLAND","VERMONT")
+Division2 <- c("NEW JERSEY","NEW YORK", "PENNSYLVANIA")
+Division3 <- c("ILLINOIS","INDIANA","MICHIGAN","OHIO","WISCONSIN")
+Division4 <- c("IOWA","KANSAS","MINNESOTA","MISSOURI","NEBRASKA","NORTH DAKOTA","SOUTH DAKOTA")
+Division5 <- c("DELAWARE","FLORIDA","GEORGIA","MARYLAND","NORTH CAROLINA","SOUTH CAROLINA","VIRGINIA","WASHINGTON","D.C","WEST VIRGINIA")
+Division6 <- c("ALABAMA","KENTUCKY","MISSISSIPPI","TENNESSEE")
+Division7 <- c("ARKANSAS","LOUISIANA","OKLAHOMA","TEXAS")
+Division8 <- c("ARIZONA","COLORADO","IDAHO","MONTANA","NEVADA","NEW MEXICO","UTAH","WYOMING")
+Division9 <- c("ALASKA","CALIFORNIA","HAWAII","OREGON","WASHINGTON")
+
+stateobject<-mutate(stateobject,division = ifelse(area_name %in% Division1,"1",ifelse(area_name %in% Division2,"2",ifelse(area_name %in% Division3,"3",ifelse(area_name %in% Division4,"4",ifelse(area_name %in% Division5,"5",ifelse(area_name %in% Division6,"6",ifelse(area_name %in% Division7,"7",ifelse(area_name %in% Division8,"8",ifelse(area_name %in% Division9,"9","ERROR"))))))))))
+
+return(stateobject)        
+
+  
+}
+
+func_step456 <- function(url){
+oldsheetname<-func_step12(url)
+sheetname<-func_step3(url)
+countyobject<-sheetname[grep(pattern = ", \\w\\w", sheetname$area_name),]
+stateobject<-sheetname[-grep(pattern = ", \\w\\w", sheetname$area_name),]
+class(countyobject)<-c("county",class(countyobject))
+class(stateobject)<-c("state",class(stateobject))
+countyobject <-func_step5(countyobject)
+stateobject <-func_step6(stateobject)
+ return(list(countyobject,stateobject)) 
+}
+
+
+
+my_wrapper <- function(url, var_name = "value"){
+  sheetname<- read.csv(url)
+  sheetnamefunc12 <- func_step12(url)
+  sheetnamefunc3 <- func_step3(url)
+  sheetnamefunc456<-func_step456(url)
+  return(sheetnamefunc456)
+}
+```
+
+
+
+# Calling function and combining data
+
+Now, the wrapper function will be called twice and  parse in the two datafiles that I've been working with so far. The results of the two calls will the two county level and two state level datasets. dplyr::bind_rows() will do this. In addition, I made a function that will combine these datasets together called my_combination.The arguments are two urls. This function will initialize two dataobjects,sheetname1 and sheetname2, which corresponds to the urls that are being read in. In addition, a and b are created that serve as the wrapper function calling in the two urls. combinecounty and combinenoncounty are initialized to combine the data sets together. The result will be output as a list. 
+
+
+```{r wrappercombine,echo = TRUE, eval = TRUE, message=FALSE}
+
+
+
+
+
+a<-my_wrapper("https://www4.stat.ncsu.edu/~online/datasets/EDU01a.csv")
+b<-my_wrapper("https://www4.stat.ncsu.edu/~online/datasets/EDU01b.csv")
+combinecounty <-dplyr::bind_rows(a[[1]], b[[1]])
+combinenoncounty <-dplyr::bind_rows(a[[2]], b[[2]])
+my_combination <- function(url_1,url_2){
+  sheetname1<-read.csv(url_1)
+  sheetname2<-read.csv(url_2)
+  a<-my_wrapper(url_1)
+  b<-my_wrapper(url_2)
+  combinecounty <-dplyr::bind_rows(a[[1]], b[[1]])
+  combinenoncounty <-dplyr::bind_rows(a[[2]], b[[2]])
+  return(list(combinecounty,combinenoncounty))
+  
+  
+}
+my_combination("https://www4.stat.ncsu.edu/~online/datasets/EDU01a.csv","https://www4.stat.ncsu.edu/~online/datasets/EDU01b.csv")
+```
+
+
+
+
+
+# Writing a Generic Function for Summarizing 
+
+The final component of this project is writing two functions that will produce graphs for state and county data.
+
+## State Plot
+
+*   For plotting state, the arguments is the dataframe you want to input, which will be the combinenoncounty information that was created in the previous step, and the variable name that you want to see plotted. In this case, enrollment will be our variable. In this function, I initialized a new dataframe called avg, which computes the mean of the enrollment for each area, removes any observations that is an error for division and groups division and the year together. The result will produce a line graph for the mean enrollment value for each division.
+```{r stateplot, echo = TRUE, eval = TRUE, message=FALSE}
+library(tidyverse)
+plot.state <- function(df, var_name = "value"){
+   avg<- df %>% group_by(division,Year)%>%summarise(enrollment =mean(get(var_name)))%>%filter(division != "ERROR")
+   
+   ggplot(avg, aes(x=Year,y=enrollment, color=division)) + geom_line()
+   #return(avg)
+}
+```
+
+## County Plot
+
+
++   For the county plot, this function has 5 arguments. They are the dataframe, which will be combinenoncounty from the previous step, the variable name, the state name, input which will determine how we sort our data, and number, which is the amount counties that will be looked at. The number argument is initialized to 5 as its' default value in case no number is specified. In this function, input is initialized in a conditional statement. If the value for input is top, it will be classified as True: anything other than that will be declared as false. This result is used in the sorted object, which will determine whether to get the top mean enrollment data, which is grabbed if the input is classified as "top", or the bottom mean enrollment data which is grabbed if anything other than top is specified.  The avg dataframe is created to select the enrollment value from the specified state only and compute the mean for enrollment value for the chosen state. This is also grouped by each area. The head object will take the bottom or top data, which is determined by the sorted object, and return the number of counties that is specified in the number argument. The final dataframe will filter the data for the state to only include the Area_name from the previous part. This will return a more dynamic line plot for each county in the state specified.
+
+
+
+```{r,countyplot,echo = TRUE, eval = TRUE, message=FALSE}
+
+plot.county <- function(df, var_name = "value", state_name = "state", input = "top", number = 5){
+  input <- ifelse(input == "top", TRUE, FALSE)
+  avg<- df%>%group_by(area_name)%>%filter(state == state_name)%>%summarise(newmean = mean(get(var_name)))
+  avg2<-df%>%summarise(newmean2 = mean(get(var_name)))
+  sorted <- avg[order(avg$newmean,decreasing = input),]
+  sorted2 <- avg2[order(avg2$newmean2,decreasing = input),]
+  head<- head(sorted, number)
+  final<- df%>%group_by(area_name)%>%filter(area_name %in% head$area_name)
+  plot2<-ggplot(final, aes(x= Year, y = get(var_name), color = area_name)) + labs(y = var_name) + geom_line()
+  return(plot2)
+  
+}
+```
+
+# Putting it Together
+To test out my wrapper and combination functions for the url below, I initialized c,d,e and f to read in each of the 4 urls. g and h are initialized to show each of the urls being combined. dplyr::bind_rows are used to combine g and h together.
+```{r wrappercombo, echo = TRUE, eval = TRUE, message=FALSE}
+c<-my_wrapper("https://www4.stat.ncsu.edu/~online/datasets/PST01a.csv")
+d<-my_wrapper("https://www4.stat.ncsu.edu/~online/datasets/PST01a.csv")
+e<-my_wrapper("https://www4.stat.ncsu.edu/~online/datasets/PST01c.csv")
+f<-my_wrapper("https://www4.stat.ncsu.edu/~online/datasets/PST01c.csv")
+g<-my_combination("https://www4.stat.ncsu.edu/~online/datasets/PST01a.csv","https://www4.stat.ncsu.edu/~online/datasets/PST01a.csv")
+
+h<-my_combination("https://www4.stat.ncsu.edu/~online/datasets/PST01c.csv","https://www4.stat.ncsu.edu/~online/datasets/PST01c.csv")
+
+dplyr::bind_rows(g[[1]], h[[1]])
+dplyr::bind_rows(g[[2]], h[[2]])
+```
+
+Next, the county plot should be run four times and the state plot to be run once. For the county plots, there are four different conditions to be passed to the function.
+
+..1.Get the 7 Pennsylvania counties with the highest mean enrollment value.They are Allegheny, Berks, Bucks, Delaware, Lancaster, Montgomery and Philadelphia.
+
+..2.Obtain the 4 Pennsylvania counties with the lowest mean enrollment value. This will be Cameron, Forest, Fulton and Sullivan.
+
+..3.Run the function with no state, input and number argument specified. This will give a blank since you need a state name to display output.
+
+..4. Find the top 4 Minnesota counties, which are Anoka, Dakota, Hennepin and Ramsey.
+
+..5. Run the state function to make sure it is working properly.
+```{r examples, echo = TRUE, eval = TRUE, message=FALSE}
+plot.county(combinecounty,"enrollment","PA","top",7)
+plot.county(combinecounty,"enrollment","PA","bottom",4)
+plot.county(combinecounty,"enrollment")
+plot.county(combinecounty,"enrollment","MN","top",4)
+plot.state(combinenoncounty,"enrollment")
+```
+
